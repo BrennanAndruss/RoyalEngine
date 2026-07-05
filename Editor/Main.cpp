@@ -5,7 +5,10 @@ using namespace Royal;
 int main()
 {
 	ApplicationConfig config;
-	config.name = "Royal Editor";
+	config.name = "Editor";
+	config.window.width = 1280;
+	config.window.height = 720;
+	config.window.title = "Royal Editor";
 
 	EditorApp app(config);
 	app.Run();

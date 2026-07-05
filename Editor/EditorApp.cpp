@@ -12,3 +12,18 @@ void EditorApp::OnInit()
 {
 	std::cout << "Hello Royal Engine!" << std::endl;
 }
+
+void EditorApp::OnUpdate(float deltaTime)
+{
+
+}
+
+void EditorApp::OnRender()
+{
+
+}
+
+void EditorApp::OnShutdown()
+{
+
+}
