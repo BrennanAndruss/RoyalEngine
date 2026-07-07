@@ -22,4 +22,4 @@ target_include_directories(imgui PUBLIC
 target_link_libraries(imgui PUBLIC d3d12.lib dxgi.lib)
 
 # Prebuilt binary redistributables: tracked as paths, copied post-build.
-set(DXC_DIR         ${CMAKE_CURRENT_SOURCE_DIR}/dxc         CACHE PATH "DXC compiler binaries")
+set(DXC_DIR ${CMAKE_CURRENT_SOURCE_DIR}/dxc CACHE PATH "DXC compiler binaries")
