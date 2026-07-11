@@ -110,6 +110,11 @@ namespace Royal
 
 	LRESULT Window::HandleMessage(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
 	{
+		if (m_messageHook)
+		{
+			m_messageHook(hwnd, message, wParam, lParam);
+		}
+
 		switch (message)
 		{
 		case WM_CLOSE:

@@ -29,6 +29,15 @@ protected:
 	void OnShutdown() override;
 
 private:
+	Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> m_imGuiSrvHeap;
+	uint32_t m_imGuiSrvDescriptorSize = 0;
+	uint32_t m_imGuiNextSrvIndex = 0;
+
+	void InitImGui();
+	void ShutdownImGui();
+	void AllocateImGuiSrvDescriptor(D3D12_CPU_DESCRIPTOR_HANDLE* outCpu,
+		D3D12_GPU_DESCRIPTOR_HANDLE* outGpu);
+
 	void OnWindowResize(uint32_t width, uint32_t height);
 
 	// Pipeline objects.

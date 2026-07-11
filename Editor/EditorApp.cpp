@@ -4,14 +4,28 @@
 #include "Engine/RHI/DX12/DX12Device.h"
 #include "Engine/RHI/DX12/DX12SwapChain.h"
 #include "Engine/RHI/DX12/DX12CommandContext.h"
+#include "Panels/StatsPanel.h"
 #include "TriangleVertex.h"
 
 #include <directx/d3dx12.h>
+#include <imgui.h>
+#include <imgui_impl_win32.h>
+#include <imgui_impl_dx12.h>
 #include <fstream>
 #include <stdexcept>
 #include <vector>
 
+extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam);
+
 using Microsoft::WRL::ComPtr;
+
+static void ThrowIfFailed(HRESULT hr, const char* msg)
+{
+	if (FAILED(hr))
+	{
+		throw std::runtime_error(msg);
+	}
+}
 
 std::vector<uint8_t> ReadFile(const std::string& path)
 {
@@ -49,17 +63,28 @@ void EditorApp::OnInit()
 	CreateRootSignature();
 	CreatePipelineState();
 	CreateVertexBuffer();
+
+	InitImGui();
 }
 
 void EditorApp::OnUpdate(float deltaTime)
 {
-
+	
 }
 
 void EditorApp::OnRender()
 {
 	m_commandContext->Reset();
 	ID3D12GraphicsCommandList* commandList = m_commandContext->GetCommandList();
+
+	ImGui_ImplDX12_NewFrame();
+	ImGui_ImplWin32_NewFrame();
+	ImGui::NewFrame();
+
+	Editor::Panels::DrawStatsPanel();
+	// ImGui::ShowDemoWindow();
+
+	ImGui::Render();
 
 	// Set necessary state.
 	commandList->SetGraphicsRootSignature(m_rootSignature.Get());
@@ -88,6 +113,11 @@ void EditorApp::OnRender()
 	commandList->IASetVertexBuffers(0, 1, &m_vertexBufferView);
 	commandList->DrawInstanced(3, 1, 0, 0);
 
+	// Render UI as an overlay after the scene draws.
+	ID3D12DescriptorHeap* imGuiHeaps[] = { m_imGuiSrvHeap.Get() };
+	commandList->SetDescriptorHeaps(1, imGuiHeaps);
+	ImGui_ImplDX12_RenderDrawData(ImGui::GetDrawData(), commandList);
+
 	// Indicate that the back buffer will now be used to present.
 	D3D12_RESOURCE_BARRIER toPresent = CD3DX12_RESOURCE_BARRIER::Transition(
 		backBuffer, D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT);
@@ -99,9 +129,85 @@ void EditorApp::OnRender()
 
 void EditorApp::OnShutdown()
 {
+	ShutdownImGui();
 	m_commandContext.reset();
 	m_swapChain.reset();
 	m_device.reset();
+}
+
+void EditorApp::InitImGui()
+{
+	// Describe and create a shader resoure view (SRV) descriptor heap for font/texture data.
+	D3D12_DESCRIPTOR_HEAP_DESC srvHeapDesc{};
+	srvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
+	srvHeapDesc.NumDescriptors = 64;
+	srvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
+
+	ThrowIfFailed(m_device->GetDevice()->CreateDescriptorHeap(&srvHeapDesc, IID_PPV_ARGS(&m_imGuiSrvHeap)), "Failed to create ImGui SRV heap.");
+
+	IMGUI_CHECKVERSION();
+	ImGui::CreateContext();
+	ImGui::StyleColorsDark();
+
+	ImGui_ImplWin32_Init(GetWindow().GetHandle());
+
+	ImGui_ImplDX12_InitInfo initInfo{};
+	initInfo.Device = m_device->GetDevice();
+	initInfo.CommandQueue = m_device->GetCommandQueue();
+	initInfo.NumFramesInFlight = RHI::DX12SwapChain::kFrameCount;
+	initInfo.RTVFormat = DXGI_FORMAT_R8G8B8A8_UNORM;
+	initInfo.DSVFormat = DXGI_FORMAT_UNKNOWN;
+	initInfo.SrvDescriptorHeap = m_imGuiSrvHeap.Get();
+
+	// Free-list-style allocator for SRV descriptors, required for ImGui DX12 backend.
+	initInfo.SrvDescriptorAllocFn =
+		[](ImGui_ImplDX12_InitInfo* info, D3D12_CPU_DESCRIPTOR_HANDLE* outCpu, D3D12_GPU_DESCRIPTOR_HANDLE* outGpu)
+		{
+			auto* self = static_cast<EditorApp*>(info->UserData);
+			self->AllocateImGuiSrvDescriptor(outCpu, outGpu);
+		};
+	initInfo.SrvDescriptorFreeFn =
+		[](ImGui_ImplDX12_InitInfo* info, D3D12_CPU_DESCRIPTOR_HANDLE cpu, D3D12_GPU_DESCRIPTOR_HANDLE gpu)
+		{
+			// No-op for now.
+		};
+	initInfo.UserData = this;
+
+	ImGui_ImplDX12_Init(&initInfo);
+
+	// Forward Win32 messages to ImGui's Win32 backend.
+	GetWindow().SetMessageHook(
+		[](HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
+		{
+			ImGui_ImplWin32_WndProcHandler(hwnd, message, wParam, lParam);
+		}
+	);
+}
+
+void EditorApp::ShutdownImGui()
+{
+	ImGui_ImplDX12_Shutdown();
+	ImGui_ImplWin32_Shutdown();
+	ImGui::DestroyContext();
+}
+
+void EditorApp::AllocateImGuiSrvDescriptor(D3D12_CPU_DESCRIPTOR_HANDLE* outCpu, D3D12_GPU_DESCRIPTOR_HANDLE* outGpu)
+{
+	if (m_imGuiSrvDescriptorSize == 0)
+	{
+		m_imGuiSrvDescriptorSize = m_device->GetDevice()->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+	}
+
+	uint32_t index = m_imGuiNextSrvIndex++;
+
+	D3D12_CPU_DESCRIPTOR_HANDLE cpuHandle = m_imGuiSrvHeap->GetCPUDescriptorHandleForHeapStart();
+	cpuHandle.ptr += static_cast<SIZE_T>(index) * m_imGuiSrvDescriptorSize;
+
+	D3D12_GPU_DESCRIPTOR_HANDLE gpuHandle = m_imGuiSrvHeap->GetGPUDescriptorHandleForHeapStart();
+	gpuHandle.ptr += static_cast<UINT64>(index) * m_imGuiSrvDescriptorSize;
+
+	*outCpu = cpuHandle;
+	*outGpu = gpuHandle;
 }
 
 void EditorApp::OnWindowResize(uint32_t width, uint32_t height)
@@ -129,11 +235,9 @@ void EditorApp::CreateRootSignature()
 		throw std::runtime_error("Failed to serialize root signature.");
 	}
 
-	if (FAILED(m_device->GetDevice()->CreateRootSignature(0, 
-		signatureBlob->GetBufferPointer(), signatureBlob->GetBufferSize(), IID_PPV_ARGS(&m_rootSignature))))
-	{
-		throw std::runtime_error("Failed to create root signature.");
-	}
+	ThrowIfFailed(m_device->GetDevice()->CreateRootSignature(0, 
+		signatureBlob->GetBufferPointer(), signatureBlob->GetBufferSize(), IID_PPV_ARGS(&m_rootSignature)
+	), "Failed to create root signature.");
 }
 
 void EditorApp::CreatePipelineState()
@@ -163,10 +267,7 @@ void EditorApp::CreatePipelineState()
 	psoDesc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
 	psoDesc.SampleDesc.Count = 1;
 
-	if (FAILED(m_device->GetDevice()->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&m_pipelineState))))
-	{
-		throw std::runtime_error("Failed to create pipeline state.");
-	}
+	ThrowIfFailed(m_device->GetDevice()->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&m_pipelineState)), "Failed to create pipeline state.");
 }
 
 void EditorApp::CreateVertexBuffer()
@@ -181,12 +282,9 @@ void EditorApp::CreateVertexBuffer()
 	CD3DX12_HEAP_PROPERTIES heapProps = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
 	CD3DX12_RESOURCE_DESC resourceDesc = CD3DX12_RESOURCE_DESC::Buffer(vertexBufferSize);
 
-	if (FAILED(m_device->GetDevice()->CreateCommittedResource(
+	ThrowIfFailed(m_device->GetDevice()->CreateCommittedResource(
 		&heapProps, D3D12_HEAP_FLAG_NONE, &resourceDesc, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&m_vertexBuffer)
-	)))
-	{
-		throw std::runtime_error("Failed to create vertex buffer.");
-	}
+	), "Failed to create vertex buffer.");
 
 	// Copy the triangle data to the vertex buffer.
 	void* vertexDataBegin = nullptr;

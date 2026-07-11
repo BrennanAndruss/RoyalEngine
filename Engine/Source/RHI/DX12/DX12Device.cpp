@@ -51,7 +51,7 @@ namespace Royal::RHI
 			i, DXGI_GPU_PREFERENCE_HIGH_PERFORMANCE, IID_PPV_ARGS(&m_adapter))!= DXGI_ERROR_NOT_FOUND; 
 			i++)
 		{
-			DXGI_ADAPTER_DESC1 desc = {};
+			DXGI_ADAPTER_DESC1 desc{};
 			m_adapter->GetDesc1(&desc);
 
 			if (desc.Flags & DXGI_ADAPTER_FLAG_SOFTWARE)
@@ -75,7 +75,7 @@ namespace Royal::RHI
 	void DX12Device::CreateCommandQueue()
 	{
 		// Describe and create the command queue.
-		D3D12_COMMAND_QUEUE_DESC desc = {};
+		D3D12_COMMAND_QUEUE_DESC desc{};
 		desc.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
 		desc.Flags = D3D12_COMMAND_QUEUE_FLAG_NONE;
 

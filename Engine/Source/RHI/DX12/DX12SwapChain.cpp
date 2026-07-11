@@ -20,7 +20,7 @@ namespace Royal::RHI
 		: m_device(device)
 	{
 		// Describe and create the swap chain.
-		DXGI_SWAP_CHAIN_DESC1 swapChainDesc = {};
+		DXGI_SWAP_CHAIN_DESC1 swapChainDesc{};
 		swapChainDesc.BufferCount = kFrameCount;
 		swapChainDesc.Width = width;
 		swapChainDesc.Height = height;
@@ -45,7 +45,7 @@ namespace Royal::RHI
 	void DX12SwapChain::CreateRTVHeap()
 	{
 		// Describe and create a render target view (RTV) descriptor heap.
-		D3D12_DESCRIPTOR_HEAP_DESC rtvHeapDesc = {};
+		D3D12_DESCRIPTOR_HEAP_DESC rtvHeapDesc{};
 		rtvHeapDesc.NumDescriptors = kFrameCount;
 		rtvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
 		rtvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
