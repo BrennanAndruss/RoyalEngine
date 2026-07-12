@@ -1,5 +1,7 @@
 #include "Engine/Core/Application.h"
 
+#include "Engine/Core/Input.h"
+#include "Engine/Core/Time.h"
 #include "Engine/Platform/Window.h"
 
 namespace Royal
@@ -16,15 +18,17 @@ namespace Royal
 	void Application::Run()
 	{
 		OnInit();
+		Time::Init();
 		m_running = true;
 
 		while (m_running && !m_window->ShouldClose())
 		{
 			m_window->PollEvents();
+			Time::Tick();
 
-			float deltaTime = 0.0f;
-			OnUpdate(deltaTime);
+			OnUpdate(Time::GetDeltaTime());
 			OnRender();
+			Input::EndFrame();
 		}
 
 		OnShutdown();

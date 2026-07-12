@@ -1,9 +1,18 @@
 #include "Panels/LogPanel.h"
 
 #include <imgui.h>
+#include <chrono>
+#include <format>
 
 namespace Editor::Panels
 {
+	static std::string CurrentTimestamp()
+	{
+		const auto now = std::chrono::floor<std::chrono::seconds>(std::chrono::system_clock::now());
+		std::chrono::zoned_time zonedTime{ std::chrono::current_zone(), now };
+		return std::format("[{:%H:%M:%S}]", zonedTime.get_local_time());
+	}
+
 	LogPanel& LogPanel::Get()
 	{
 		static LogPanel instance;
@@ -12,7 +21,7 @@ namespace Editor::Panels
 
 	void LogPanel::AddLog(const std::string& message)
 	{
-		m_lines.push_back(message);
+		m_lines.push_back(CurrentTimestamp() + " " + message);
 		if (m_lines.size() > kMaxLines)
 		{
 			m_lines.pop_front();

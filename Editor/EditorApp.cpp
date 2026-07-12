@@ -1,5 +1,6 @@
 #include "EditorApp.h"
 
+#include "Engine/Core/Input.h"
 #include "Engine/Platform/Window.h"
 #include "Engine/RHI/DX12/DX12Device.h"
 #include "Engine/RHI/DX12/DX12SwapChain.h"
@@ -14,6 +15,7 @@
 #include <imgui.h>
 #include <imgui_impl_win32.h>
 #include <imgui_impl_dx12.h>
+#include <format>
 #include <fstream>
 #include <stdexcept>
 #include <vector>
@@ -76,7 +78,13 @@ namespace Editor
 
 	void EditorApp::OnUpdate(float deltaTime)
 	{
-
+		for (int vk = 0; vk < 256; ++vk)
+		{
+			if (Input::WasKeyPressed(static_cast<uint8_t>(vk)))
+			{
+				Panels::LogPanel::Get().AddLog(std::format("Key pressed: {}", vk));
+			}
+		}
 	}
 
 	void EditorApp::OnRender()

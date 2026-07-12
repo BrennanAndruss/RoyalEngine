@@ -1,5 +1,7 @@
 #include "Engine/Platform/Window.h"
 
+#include "Engine/Core/Input.h"
+
 #include <stdexcept>
 
 namespace Royal
@@ -120,6 +122,16 @@ namespace Royal
 		case WM_CLOSE:
 		case WM_DESTROY:
 			m_shouldClose = true;
+			return 0;
+
+		case WM_KEYDOWN:
+		case WM_SYSKEYDOWN:
+			Input::OnKeyDown(static_cast<uint8_t>(wParam));
+			return 0;
+
+		case WM_KEYUP:
+		case WM_SYSKEYUP:
+			Input::OnKeyUp(static_cast<uint8_t>(wParam));
 			return 0;
 
 		case WM_SIZE: 
