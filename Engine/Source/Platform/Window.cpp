@@ -1,6 +1,7 @@
 #include "Engine/Platform/Window.h"
 
 #include "Engine/Core/Input.h"
+#include "Engine/Core/Logger.h"
 
 #include <stdexcept>
 
@@ -32,6 +33,7 @@ namespace Royal
 
 		if (!RegisterClassEx(&windowClass) && GetLastError() != ERROR_CLASS_ALREADY_EXISTS)
 		{
+			ROYAL_LOG_FATAL("Failed to register window class.");
 			throw std::runtime_error("Failed to register window class.");
 		}
 
@@ -64,6 +66,7 @@ namespace Royal
 
 		if (!m_hwnd)
 		{
+			ROYAL_LOG_FATAL("Failed to create window.");
 			throw std::runtime_error("Failed to create window.");
 		}
 

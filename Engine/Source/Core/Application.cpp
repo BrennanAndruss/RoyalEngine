@@ -1,5 +1,6 @@
 #include "Engine/Core/Application.h"
 
+#include "Engine/Core/Assert.h"
 #include "Engine/Core/Input.h"
 #include "Engine/Core/Time.h"
 #include "Engine/Platform/Window.h"
@@ -17,6 +18,8 @@ namespace Royal
 
 	void Application::Run()
 	{
+		ROYAL_ASSERT(!m_running, "Run called while already running.");
+
 		OnInit();
 		Time::Init();
 		m_running = true;

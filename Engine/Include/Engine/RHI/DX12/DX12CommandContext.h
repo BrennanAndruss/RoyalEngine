@@ -33,5 +33,6 @@ namespace Royal::RHI
 		Microsoft::WRL::ComPtr<ID3D12Fence> m_fence;
 		HANDLE m_fenceEvent = nullptr;
 		uint64_t m_fenceValue = 0;
+		bool m_isRecording = false;
 	};
 }

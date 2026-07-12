@@ -1,5 +1,7 @@
 #include "Engine/RHI/DX12/DX12Device.h"
 
+#include "Engine/Core/Logger.h"
+
 #include <stdexcept>
 
 using Microsoft::WRL::ComPtr;
@@ -10,6 +12,7 @@ namespace Royal::RHI
 	{
 		if (FAILED(hr))
 		{
+			ROYAL_LOG_FATAL("{}, hr={:#x}", msg, static_cast<unsigned>(hr));
 			throw std::runtime_error(msg);
 		}
 	}

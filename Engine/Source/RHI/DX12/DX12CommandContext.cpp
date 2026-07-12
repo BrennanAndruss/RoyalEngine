@@ -1,5 +1,7 @@
 #include "Engine/RHI/DX12/DX12CommandContext.h"
 
+#include "Engine/Core/Assert.h"
+#include "Engine/Core/Logger.h"
 #include "Engine/RHI/DX12/DX12Device.h"
 
 #include <stdexcept>
@@ -12,6 +14,7 @@ namespace Royal::RHI
 	{
 		if (FAILED(hr))
 		{
+			ROYAL_LOG_FATAL("{}, hr={:#x}", msg, static_cast<unsigned>(hr));
 			throw std::runtime_error(msg);
 		}
 	}
@@ -53,18 +56,25 @@ namespace Royal::RHI
 
 	void DX12CommandContext::Reset()
 	{
+		ROYAL_ASSERT(!m_isRecording, "Reset called while already recording.");
+
 		ThrowIfFailed(m_commandAllocator->Reset(), "Failed to reset command allocator.");
 		ThrowIfFailed(m_commandList->Reset(m_commandAllocator.Get(), nullptr), "Failed to reset command list.");
+
+		m_isRecording = true;
 	}
 
 	void DX12CommandContext::ExecuteAndWait()
 	{
+		ROYAL_ASSERT(m_isRecording, "ExecuteAndWait called without a matching Reset.");
+
 		ThrowIfFailed(m_commandList->Close(), "Failed to close command list.");
 
 		ID3D12CommandList* commandLists[] = { m_commandList.Get() };
 		m_device.GetCommandQueue()->ExecuteCommandLists(1, commandLists);
 
 		WaitForGPU();
+		m_isRecording = false;
 	}
 
 	void DX12CommandContext::WaitForGPU()

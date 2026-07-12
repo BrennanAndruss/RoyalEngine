@@ -1,6 +1,8 @@
 #include "EditorApp.h"
 
+#include "Engine/Core/Assert.h"
 #include "Engine/Core/Input.h"
+#include "Engine/Core/Logger.h"
 #include "Engine/Platform/Window.h"
 #include "Engine/RHI/DX12/DX12Device.h"
 #include "Engine/RHI/DX12/DX12SwapChain.h"
@@ -30,6 +32,7 @@ namespace Editor
 	{
 		if (FAILED(hr))
 		{
+			ROYAL_LOG_FATAL("{}, hr={:#x}", msg, static_cast<unsigned>(hr));
 			throw std::runtime_error(msg);
 		}
 	}
@@ -59,6 +62,14 @@ namespace Editor
 
 	void EditorApp::OnInit()
 	{
+		// Register sink with Logger that forwards into LogPanel.
+		Logger::AddSink([](LogLevel level, const std::string& message)
+			{
+				Panels::LogPanel::Get().AddLog(level, message);
+			});
+
+		ROYAL_LOG_INFO("Editor initializing...");
+
 		m_device = std::make_unique<RHI::DX12Device>();
 		m_swapChain = std::make_unique<RHI::DX12SwapChain>(
 			*m_device, GetWindow().GetHandle(), GetWindow().GetWidth(), GetWindow().GetHeight()
@@ -73,18 +84,12 @@ namespace Editor
 
 		InitImGui();
 
-		Panels::LogPanel::Get().AddLog("Editor initialized.");
+		ROYAL_LOG_INFO("Editor initialized.");
 	}
 
 	void EditorApp::OnUpdate(float deltaTime)
 	{
-		for (int vk = 0; vk < 256; ++vk)
-		{
-			if (Input::WasKeyPressed(static_cast<uint8_t>(vk)))
-			{
-				Panels::LogPanel::Get().AddLog(std::format("Key pressed: {}", vk));
-			}
-		}
+		
 	}
 
 	void EditorApp::OnRender()
@@ -263,6 +268,8 @@ namespace Editor
 
 	void EditorApp::CreatePipelineState()
 	{
+		ROYAL_ASSERT(m_rootSignature != nullptr, "CreatePipelineState called before CreateRootDescriptor");
+
 		std::vector<uint8_t> vertexShaderBytes = ReadFile("Shaders/Triangle_VS.cso");
 		std::vector<uint8_t> pixelShaderBytes = ReadFile("Shaders/Triangle_PS.cso");
 

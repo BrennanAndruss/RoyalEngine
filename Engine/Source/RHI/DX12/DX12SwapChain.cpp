@@ -1,5 +1,7 @@
 #include "Engine/RHI/DX12/DX12SwapChain.h"
 
+#include "Engine/Core/Assert.h"
+#include "Engine/Core/Logger.h"
 #include "Engine/RHI/DX12/DX12Device.h"
 
 #include <stdexcept>
@@ -12,6 +14,7 @@ namespace Royal::RHI
 	{
 		if (FAILED(hr))
 		{
+			ROYAL_LOG_FATAL("{}, hr={:#x}", msg, static_cast<unsigned>(hr));
 			throw std::runtime_error(msg);
 		}
 	}
@@ -79,6 +82,8 @@ namespace Royal::RHI
 
 	void DX12SwapChain::Resize(uint32_t width, uint32_t height)
 	{
+		ROYAL_ASSERT(width > 0 && height > 0, "Resize called with zero dimension: {}x{}.", width, height);
+
 		ReleaseBackBuffers();
 
 		ThrowIfFailed(m_swapChain->ResizeBuffers(kFrameCount, width, height, DXGI_FORMAT_R8G8B8A8_UNORM, 0), "Failed to resize swap chain bufffers.");
