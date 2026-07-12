@@ -1,6 +1,7 @@
 #include "EditorApp.h"
 
 using namespace Royal;
+using namespace Editor;
 
 int main()
 {
