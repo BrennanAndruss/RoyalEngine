@@ -21,6 +21,7 @@ void Editor::Panels::DrawMenuBar(PanelState& state, Royal::Application& app)
 		{
 			ImGui::MenuItem("Stats", nullptr, &state.showStats);
 			ImGui::MenuItem("Log", nullptr, &state.showLog);
+			ImGui::MenuItem("CVars", nullptr, &state.showCVars);
 			ImGui::EndMenu();
 		}
 

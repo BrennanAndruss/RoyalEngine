@@ -6,5 +6,6 @@ namespace Editor::Panels
 	{
 		bool showStats = true;
 		bool showLog = true;
+		bool showCVars = true;
 	};
 }

@@ -1,6 +1,7 @@
 #include "EditorApp.h"
 
 #include "Engine/Core/Assert.h"
+#include "Engine/Core/CVar.h"
 #include "Engine/Core/Input.h"
 #include "Engine/Core/Logger.h"
 #include "Engine/Platform/Window.h"
@@ -9,6 +10,7 @@
 #include "Engine/RHI/DX12/DX12CommandContext.h"
 #include "Panels/DockspacePanel.h"
 #include "Panels/MenuBar.h"
+#include "Panels/CVarPanel.h"
 #include "Panels/LogPanel.h"
 #include "Panels/StatsPanel.h"
 #include "TriangleVertex.h"
@@ -25,6 +27,13 @@
 extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam);
 
 using Microsoft::WRL::ComPtr;
+
+namespace
+{
+	auto& r_clearColorR = CVarRegistry::RegisterFloat("r.clearColor.r", 0.0f, 0.0f, 1.0f);
+	auto& r_clearColorG = CVarRegistry::RegisterFloat("r.clearColor.g", 0.2f, 0.0f, 1.0f);
+	auto& r_clearColorB = CVarRegistry::RegisterFloat("r.clearColor.b", 0.4f, 0.0f, 1.0f);
+}
 
 namespace Editor
 {
@@ -105,6 +114,7 @@ namespace Editor
 		Panels::DrawMenuBar(m_panelState, *this);
 		Panels::DrawStatsPanel(m_panelState.showStats, GetWindow());
 		Panels::LogPanel::Get().Draw(m_panelState.showLog);
+		Panels::DrawCVarPanel(m_panelState.showCVars);
 		//ImGui::ShowDemoWindow();
 
 		ImGui::Render();
@@ -130,7 +140,7 @@ namespace Editor
 		commandList->OMSetRenderTargets(1, &rtvHandle, FALSE, nullptr);
 
 		// Record commands.
-		const float clearColor[] = { 0.0f, 0.2f, 0.4f, 1.0f };
+		const float clearColor[] = { r_clearColorR.Get(), r_clearColorG.Get(), r_clearColorB.Get(), 1.0f};
 		commandList->ClearRenderTargetView(rtvHandle, clearColor, 0, nullptr);
 		commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 		commandList->IASetVertexBuffers(0, 1, &m_vertexBufferView);
