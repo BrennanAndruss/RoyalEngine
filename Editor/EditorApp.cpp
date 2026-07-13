@@ -8,6 +8,7 @@
 #include "Engine/RHI/DX12/DX12Device.h"
 #include "Engine/RHI/DX12/DX12SwapChain.h"
 #include "Engine/RHI/DX12/DX12CommandContext.h"
+#include "Engine/RHI/DX12/DX12GpuProfiler.h"
 #include "Panels/DockspacePanel.h"
 #include "Panels/MenuBar.h"
 #include "Panels/CVarPanel.h"
@@ -85,6 +86,8 @@ namespace Editor
 		);
 		m_commandContext = std::make_unique<RHI::DX12CommandContext>(*m_device);
 
+		m_gpuProfiler = std::make_unique<RHI::DX12GpuProfiler>(*m_device);
+
 		GetWindow().SetResizeCallback([this](uint32_t width, uint32_t height) { OnWindowResize(width, height); });
 
 		CreateRootSignature();
@@ -103,60 +106,83 @@ namespace Editor
 
 	void EditorApp::OnRender()
 	{
+		// Begin profiler frames.
+		Profiler::Get().BeginFrame();
+
 		m_commandContext->Reset();
 		ID3D12GraphicsCommandList* commandList = m_commandContext->GetCommandList();
 
-		ImGui_ImplDX12_NewFrame();
-		ImGui_ImplWin32_NewFrame();
-		ImGui::NewFrame();
+		m_gpuProfiler->BeginFrame(commandList);
+		uint32_t frameEvent = m_gpuProfiler->BeginEvent(commandList, "Frame");
 
-		Panels::DrawDockspace();
-		Panels::DrawMenuBar(m_panelState, *this);
-		Panels::DrawStatsPanel(m_panelState.showStats, GetWindow());
-		Panels::LogPanel::Get().Draw(m_panelState.showLog);
-		Panels::DrawCVarPanel(m_panelState.showCVars);
-		//ImGui::ShowDemoWindow();
+		ID3D12Resource* backBuffer = nullptr;
+		{
+			ROYAL_PROFILE_SCOPE("Scene Draw");
 
-		ImGui::Render();
+			// Set necessary state.
+			commandList->SetGraphicsRootSignature(m_rootSignature.Get());
+			commandList->SetPipelineState(m_pipelineState.Get());
 
-		// Set necessary state.
-		commandList->SetGraphicsRootSignature(m_rootSignature.Get());
-		commandList->SetPipelineState(m_pipelineState.Get());
+			D3D12_VIEWPORT viewport{ 0.0f, 0.0f,
+			static_cast<float>(GetWindow().GetWidth()), static_cast<float>(GetWindow().GetHeight()), 0.0f, 1.0f };
+			D3D12_RECT scissor{ 0, 0, static_cast<LONG>(GetWindow().GetWidth()), static_cast<LONG>(GetWindow().GetHeight()) };
+			commandList->RSSetViewports(1, &viewport);
+			commandList->RSSetScissorRects(1, &scissor);
 
-		D3D12_VIEWPORT viewport{ 0.0f, 0.0f,
-		static_cast<float>(GetWindow().GetWidth()), static_cast<float>(GetWindow().GetHeight()), 0.0f, 1.0f };
-		D3D12_RECT scissor{ 0, 0, static_cast<LONG>(GetWindow().GetWidth()), static_cast<LONG>(GetWindow().GetHeight()) };
-		commandList->RSSetViewports(1, &viewport);
-		commandList->RSSetScissorRects(1, &scissor);
+			backBuffer = m_swapChain->GetCurrentBackBuffer();
 
-		ID3D12Resource* backBuffer = m_swapChain->GetCurrentBackBuffer();
+			// Indicate that the back buffer will be used as a render target.
+			D3D12_RESOURCE_BARRIER toRT = CD3DX12_RESOURCE_BARRIER::Transition(
+				backBuffer, D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RENDER_TARGET);
+			commandList->ResourceBarrier(1, &toRT);
 
-		// Indicate that the back buffer will be used as a render target.
-		D3D12_RESOURCE_BARRIER toRT = CD3DX12_RESOURCE_BARRIER::Transition(
-			backBuffer, D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RENDER_TARGET);
-		commandList->ResourceBarrier(1, &toRT);
+			D3D12_CPU_DESCRIPTOR_HANDLE rtvHandle = m_swapChain->GetCurrentRTV();
+			commandList->OMSetRenderTargets(1, &rtvHandle, FALSE, nullptr);
 
-		D3D12_CPU_DESCRIPTOR_HANDLE rtvHandle = m_swapChain->GetCurrentRTV();
-		commandList->OMSetRenderTargets(1, &rtvHandle, FALSE, nullptr);
+			// Record commands.
+			const float clearColor[] = { r_clearColorR.Get(), r_clearColorG.Get(), r_clearColorB.Get(), 1.0f };
+			commandList->ClearRenderTargetView(rtvHandle, clearColor, 0, nullptr);
+			commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+			commandList->IASetVertexBuffers(0, 1, &m_vertexBufferView);
+			commandList->DrawInstanced(3, 1, 0, 0);
+		}
 
-		// Record commands.
-		const float clearColor[] = { r_clearColorR.Get(), r_clearColorG.Get(), r_clearColorB.Get(), 1.0f};
-		commandList->ClearRenderTargetView(rtvHandle, clearColor, 0, nullptr);
-		commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-		commandList->IASetVertexBuffers(0, 1, &m_vertexBufferView);
-		commandList->DrawInstanced(3, 1, 0, 0);
+		{
+			ROYAL_PROFILE_SCOPE("ImGui Draw");
 
-		// Render UI as an overlay after the scene draws.
-		ID3D12DescriptorHeap* imGuiHeaps[] = { m_imGuiSrvHeap.Get() };
-		commandList->SetDescriptorHeaps(1, imGuiHeaps);
-		ImGui_ImplDX12_RenderDrawData(ImGui::GetDrawData(), commandList);
+			// Build UI for new frame.
+			ImGui_ImplDX12_NewFrame();
+			ImGui_ImplWin32_NewFrame();
+			ImGui::NewFrame();
+
+			Panels::DrawDockspace();
+			Panels::DrawMenuBar(m_panelState, *this);
+			Panels::DrawStatsPanel(m_panelState.showStats, GetWindow(), m_gpuProfiler->GetLastFrameSamples());
+			Panels::LogPanel::Get().Draw(m_panelState.showLog);
+			Panels::DrawCVarPanel(m_panelState.showCVars);
+			//ImGui::ShowDemoWindow();
+
+			ImGui::Render();
+
+			// Render UI as an overlay after the scene draws.
+			ID3D12DescriptorHeap* imGuiHeaps[] = { m_imGuiSrvHeap.Get() };
+			commandList->SetDescriptorHeaps(1, imGuiHeaps);
+			ImGui_ImplDX12_RenderDrawData(ImGui::GetDrawData(), commandList);
+		}
 
 		// Indicate that the back buffer will now be used to present.
 		D3D12_RESOURCE_BARRIER toPresent = CD3DX12_RESOURCE_BARRIER::Transition(
 			backBuffer, D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT);
 		commandList->ResourceBarrier(1, &toPresent);
 
-		m_commandContext->ExecuteAndWait();
+		m_gpuProfiler->EndEvent(commandList, frameEvent);
+		m_gpuProfiler->EndFrame(commandList);
+
+		{
+			ROYAL_PROFILE_SCOPE("GPU Wait");
+			m_commandContext->ExecuteAndWait();
+		}
+		m_gpuProfiler->Readback();
 		m_swapChain->Present();
 	}
 

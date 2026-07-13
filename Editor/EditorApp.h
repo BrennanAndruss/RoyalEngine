@@ -1,6 +1,8 @@
 #pragma once
 
 #include "Engine/Core/Application.h"
+#include "Engine/Core/Profiler.h"
+#include "Engine/RHI/DX12/DX12GpuProfiler.h"
 #include "Panels/PanelState.h"
 
 #include <d3d12.h>
@@ -60,5 +62,7 @@ namespace Editor
 		void CreateRootSignature();
 		void CreatePipelineState();
 		void CreateVertexBuffer();
+
+		std::unique_ptr<RHI::DX12GpuProfiler> m_gpuProfiler;
 	};
 }
