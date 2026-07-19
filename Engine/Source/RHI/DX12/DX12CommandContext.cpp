@@ -24,12 +24,15 @@ namespace Royal::RHI
 	{
 		ID3D12Device* d3dDevice = m_device.GetDevice();
 
-		ThrowIfFailed(d3dDevice->CreateCommandAllocator(
-			D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&m_commandAllocator)), "Failed to create command allocator.");
+		for (FrameSlot& slot : m_frameSlots)
+		{
+			ThrowIfFailed(d3dDevice->CreateCommandAllocator(
+				D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&slot.commandAllocator)), "Failed to create command allocator.");
+		}
 
-		// Create the command list, created in the recording state.
+		// Create the shared command command list, created in the recording state.
 		ThrowIfFailed(d3dDevice->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT,
-			m_commandAllocator.Get(), nullptr, IID_PPV_ARGS(&m_commandList)), "Failed to create command list.");
+			m_frameSlots[0].commandAllocator.Get(), nullptr, IID_PPV_ARGS(&m_commandList)), "Failed to create command list.");
 
 		// Close the command list so it can be reset before recording commands.
 		m_commandList->Close();
@@ -54,39 +57,49 @@ namespace Royal::RHI
 		}
 	}
 
-	void DX12CommandContext::Reset()
+	void DX12CommandContext::BeginFrame(uint32_t frameIndex)
 	{
-		ROYAL_ASSERT(!m_isRecording, "Reset called while already recording.");
+		ROYAL_ASSERT(frameIndex < kFrameCount, "Frame index out of range.");
 
-		ThrowIfFailed(m_commandAllocator->Reset(), "Failed to reset command allocator.");
-		ThrowIfFailed(m_commandList->Reset(m_commandAllocator.Get(), nullptr), "Failed to reset command list.");
+		FrameSlot& slot = m_frameSlots[frameIndex];
 
-		m_isRecording = true;
+		// Wait if this slot's previous occupant hasn't finished on the GPU yet.
+		if (slot.fenceValue != 0 && m_fence->GetCompletedValue() < slot.fenceValue)
+		{
+			ThrowIfFailed(m_fence->SetEventOnCompletion(slot.fenceValue, m_fenceEvent), "Failed to set fence event.");
+			WaitForSingleObject(m_fenceEvent, INFINITE);
+		}
+
+		ThrowIfFailed(slot.commandAllocator->Reset(), "Failed to reset command allocator.");
+		ThrowIfFailed(m_commandList->Reset(slot.commandAllocator.Get(), nullptr), "Failed to reset command list.");
 	}
 
-	void DX12CommandContext::ExecuteAndWait()
+	void DX12CommandContext::Execute(uint32_t frameIndex)
 	{
-		ROYAL_ASSERT(m_isRecording, "ExecuteAndWait called without a matching Reset.");
+		ROYAL_ASSERT(frameIndex < kFrameCount, "Frame index out of range.");
 
 		ThrowIfFailed(m_commandList->Close(), "Failed to close command list.");
 
 		ID3D12CommandList* commandLists[] = { m_commandList.Get() };
 		m_device.GetCommandQueue()->ExecuteCommandLists(1, commandLists);
 
-		WaitForGPU();
-		m_isRecording = false;
+		// Signal and increment the fence value.
+		uint64_t signalValue = m_nextFenceValue++;
+		ThrowIfFailed(m_device.GetCommandQueue()->Signal(m_fence.Get(), signalValue), "Failed to signal fence");
+
+		m_frameSlots[frameIndex].fenceValue = signalValue;
 	}
 
 	void DX12CommandContext::WaitForGPU()
 	{
 		// Signal and increment the fence value.
-		m_fenceValue++;
-		ThrowIfFailed(m_device.GetCommandQueue()->Signal(m_fence.Get(), m_fenceValue), "Failed to signal fence.");
+		uint64_t signalValue = m_nextFenceValue++;
+		ThrowIfFailed(m_device.GetCommandQueue()->Signal(m_fence.Get(), signalValue), "Failed to signal fence.");
 
 		// Wait until the previous frame is finished.
-		if (m_fence->GetCompletedValue() < m_fenceValue)
+		if (m_fence->GetCompletedValue() < signalValue)
 		{
-			ThrowIfFailed(m_fence->SetEventOnCompletion(m_fenceValue, m_fenceEvent), "Failed to set fence event.");
+			ThrowIfFailed(m_fence->SetEventOnCompletion(signalValue, m_fenceEvent), "Failed to set fence event.");
 			WaitForSingleObject(m_fenceEvent, INFINITE);
 		}
 	}

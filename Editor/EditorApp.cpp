@@ -86,7 +86,7 @@ namespace Editor
 		);
 		m_commandContext = std::make_unique<RHI::DX12CommandContext>(*m_device);
 
-		m_gpuProfiler = std::make_unique<RHI::DX12GpuProfiler>(*m_device);
+		m_gpuProfiler = std::make_unique<RHI::DX12GpuProfiler>(*m_device, RHI::DX12SwapChain::kFrameCount);
 
 		GetWindow().SetResizeCallback([this](uint32_t width, uint32_t height) { OnWindowResize(width, height); });
 
@@ -109,11 +109,14 @@ namespace Editor
 		// Begin profiler frames.
 		Profiler::Get().BeginFrame();
 
-		m_commandContext->Reset();
-		ID3D12GraphicsCommandList* commandList = m_commandContext->GetCommandList();
+		uint32_t frameIndex = m_swapChain->GetCurrentFrameIndex();
 
-		m_gpuProfiler->BeginFrame(commandList);
-		uint32_t frameEvent = m_gpuProfiler->BeginEvent(commandList, "Frame");
+		m_commandContext->BeginFrame(frameIndex);
+		m_gpuProfiler->Readback(frameIndex);
+		m_gpuProfiler->BeginFrame(frameIndex);
+
+		ID3D12GraphicsCommandList* commandList = m_commandContext->GetCommandList();
+		uint32_t frameEvent = m_gpuProfiler->BeginEvent(commandList, frameIndex, "Frame");
 
 		ID3D12Resource* backBuffer = nullptr;
 		{
@@ -175,14 +178,10 @@ namespace Editor
 			backBuffer, D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT);
 		commandList->ResourceBarrier(1, &toPresent);
 
-		m_gpuProfiler->EndEvent(commandList, frameEvent);
-		m_gpuProfiler->EndFrame(commandList);
+		m_gpuProfiler->EndEvent(commandList, frameIndex, frameEvent);
+		m_gpuProfiler->EndFrame(commandList, frameIndex);
 
-		{
-			ROYAL_PROFILE_SCOPE("GPU Wait");
-			m_commandContext->ExecuteAndWait();
-		}
-		m_gpuProfiler->Readback();
+		m_commandContext->Execute(frameIndex);
 		m_swapChain->Present();
 	}
 
